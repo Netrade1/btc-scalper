@@ -1,0 +1,89 @@
+// @version=5
+// BTC Scalper — TradingView Pine Script
+// -------------------------------------------------------
+// Sends webhook alerts to the FastAPI backend.
+// Replace WEBHOOK_SECRET with your actual secret token
+// and YOUR_DOMAIN with your server's domain or IP.
+//
+// Webhook URL in TradingView alert settings:
+//   https://YOUR_DOMAIN/webhook/tradingview
+//
+// Add the following custom header in TradingView:
+//   X-Webhook-Token: {{WEBHOOK_SECRET}}
+//
+// Or embed the token in the JSON body (see message template below).
+// -------------------------------------------------------
+
+strategy(
+  title         = "BTC Scalper",
+  shorttitle    = "BTCS",
+  overlay       = true,
+  default_qty_type  = strategy.percent_of_equity,
+  default_qty_value = 1,
+  commission_type   = strategy.commission.percent,
+  commission_value  = 0.04
+)
+
+// ── Inputs ──────────────────────────────────────────────
+fast_len  = input.int(9,  "Fast EMA",  minval=1)
+slow_len  = input.int(21, "Slow EMA",  minval=1)
+atr_mult  = input.float(1.5, "ATR Stop Multiplier", step=0.1)
+atr_len   = input.int(14, "ATR Length", minval=1)
+
+webhook_secret = input.string(
+  "changeme",
+  "Webhook Secret Token",
+  tooltip="Must match WEBHOOK_SECRET on your server."
+)
+
+// ── Indicators ───────────────────────────────────────────
+fast_ema = ta.ema(close, fast_len)
+slow_ema = ta.ema(close, slow_len)
+atr      = ta.atr(atr_len)
+
+plot(fast_ema, color=color.new(color.orange, 0), title="Fast EMA")
+plot(slow_ema, color=color.new(color.blue,   0), title="Slow EMA")
+
+// ── Signals ──────────────────────────────────────────────
+long_signal  = ta.crossover(fast_ema,  slow_ema)
+short_signal = ta.crossunder(fast_ema, slow_ema)
+
+// ── Webhook message template ─────────────────────────────
+// TradingView fills {{ticker}}, {{close}}, etc. at alert time.
+long_msg = str.format(
+  '\'{"symbol":"{0}","action":"buy","price":{1},"quantity":0.001,"token":"{2}"}\'',
+  syminfo.ticker, str.tostring(close), webhook_secret
+)
+
+short_msg = str.format(
+  '\'{"symbol":"{0}","action":"sell","price":{1},"quantity":0.001,"token":"{2}"}\'',
+  syminfo.ticker, str.tostring(close), webhook_secret
+)
+
+close_msg = str.format(
+  '\'{"symbol":"{0}","action":"close","price":{1},"quantity":0.001,"token":"{2}"}\'',
+  syminfo.ticker, str.tostring(close), webhook_secret
+)
+
+// ── Strategy entries ─────────────────────────────────────
+if long_signal
+    strategy.entry("Long", strategy.long, alert_message=long_msg)
+    strategy.exit(
+      "Long SL/TP",
+      from_entry = "Long",
+      stop        = close - atr * atr_mult,
+      limit       = close + atr * atr_mult * 2
+    )
+
+if short_signal
+    strategy.entry("Short", strategy.short, alert_message=short_msg)
+    strategy.exit(
+      "Short SL/TP",
+      from_entry = "Short",
+      stop        = close + atr * atr_mult,
+      limit       = close - atr * atr_mult * 2
+    )
+
+// ── Alerts (create these manually in TradingView) ────────
+alertcondition(long_signal,  "BTC Scalper — BUY",   long_msg)
+alertcondition(short_signal, "BTC Scalper — SELL",  short_msg)

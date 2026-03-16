@@ -1,0 +1,49 @@
+version: "3.9"
+
+services:
+  # ── FastAPI backend ──────────────────────────────────────────────────────────
+  api:
+    build: .
+    container_name: btc_scalper_api
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist SQLite database outside the container
+      - ./data:/app/data
+    environment:
+      DATABASE_URL: sqlite:////app/data/btc_scalper.db
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── Celery worker ────────────────────────────────────────────────────────────
+  worker:
+    build: .
+    container_name: btc_scalper_worker
+    restart: unless-stopped
+    env_file: .env
+    # Scale workers: docker-compose up --scale worker=4
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4
+    volumes:
+      - ./data:/app/data
+    environment:
+      DATABASE_URL: sqlite:////app/data/btc_scalper.db
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── Redis (message broker + result backend) ──────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: btc_scalper_redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  data:

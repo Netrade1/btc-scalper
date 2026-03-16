@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BTC Scalper Dashboard</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --accent: #f7931a;
+      --green: #2ea043;
+      --red: #cf222e;
+      --text: #e6edf3;
+      --muted: #8b949e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      padding: 1.5rem;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 2rem;
+    }
+    header h1 { font-size: 1.5rem; font-weight: 700; }
+    header span { font-size: 1.6rem; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+    }
+    .card .label { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .card .value { font-size: 1.8rem; font-weight: 700; margin-top: 0.25rem; }
+    .card .value.green { color: var(--green); }
+    .card .value.red { color: var(--red); }
+    .card .value.accent { color: var(--accent); }
+    .alert-box {
+      display: none;
+      background: #3d1a1a;
+      border: 1px solid var(--red);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+      font-weight: 600;
+      color: #f85149;
+    }
+    .alert-box.visible { display: block; }
+    section h2 { font-size: 1rem; font-weight: 600; margin-bottom: 0.75rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    th, td {
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+    th { color: var(--muted); font-weight: 600; }
+    tr:last-child td { border-bottom: none; }
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .badge.buy { background: #0d2e1a; color: var(--green); }
+    .badge.sell { background: #2d0f0f; color: var(--red); }
+    .badge.close { background: #1a1a2e; color: #58a6ff; }
+    .controls {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+    .field { display: flex; flex-direction: column; gap: 0.25rem; }
+    .field label { font-size: 0.78rem; color: var(--muted); }
+    input[type="number"] {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.4rem 0.6rem;
+      border-radius: 6px;
+      width: 140px;
+    }
+    button {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      padding: 0.45rem 1rem;
+      border-radius: 6px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button:hover { opacity: 0.88; }
+    #ruin-card { display: none; }
+  </style>
+</head>
+<body>
+
+<header>
+  <span>₿</span>
+  <h1>BTC Scalper Dashboard</h1>
+</header>
+
+<div id="alertBox" class="alert-box"></div>
+
+<!-- Stats grid -->
+<div class="grid" id="statsGrid">
+  <div class="card">
+    <div class="label">Total Trades</div>
+    <div class="value accent" id="totalTrades">–</div>
+  </div>
+  <div class="card">
+    <div class="label">Win Rate</div>
+    <div class="value" id="winRate">–</div>
+  </div>
+  <div class="card">
+    <div class="label">Net P&amp;L</div>
+    <div class="value" id="netPnl">–</div>
+  </div>
+  <div class="card">
+    <div class="label">Avg Win</div>
+    <div class="value green" id="avgWin">–</div>
+  </div>
+  <div class="card">
+    <div class="label">Avg Loss</div>
+    <div class="value red" id="avgLoss">–</div>
+  </div>
+  <div class="card" id="ruin-card">
+    <div class="label">Ruin Probability</div>
+    <div class="value" id="ruinProb">–</div>
+  </div>
+</div>
+
+<!-- Ruin probability controls -->
+<div class="controls">
+  <div class="field">
+    <label for="capitalInput">Capital (USD)</label>
+    <input type="number" id="capitalInput" value="10000" min="1" step="100" />
+  </div>
+  <div class="field">
+    <label for="unitInput">Trade Size (USD)</label>
+    <input type="number" id="unitInput" value="100" min="1" step="10" />
+  </div>
+  <button onclick="fetchRuin()">Calculate Ruin Probability</button>
+</div>
+
+<!-- Trade table -->
+<section>
+  <h2>Recent Trades</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Symbol</th>
+        <th>Action</th>
+        <th>Price</th>
+        <th>Qty</th>
+        <th>P&amp;L</th>
+        <th>Time</th>
+      </tr>
+    </thead>
+    <tbody id="tradeBody"></tbody>
+  </table>
+</section>
+
+<script>
+  const BASE = '';
+
+  async function fetchStats() {
+    try {
+      const res = await fetch(`${BASE}/dashboard/stats`);
+      const d = await res.json();
+      document.getElementById('totalTrades').textContent = d.total_trades ?? '–';
+      const wr = d.win_rate != null ? (d.win_rate * 100).toFixed(1) + '%' : '–';
+      const wrEl = document.getElementById('winRate');
+      wrEl.textContent = wr;
+      wrEl.className = 'value ' + (d.win_rate >= 0.5 ? 'green' : 'red');
+      const pnlEl = document.getElementById('netPnl');
+      pnlEl.textContent = d.net_pnl != null ? '$' + d.net_pnl.toFixed(2) : '–';
+      pnlEl.className = 'value ' + (d.net_pnl >= 0 ? 'green' : 'red');
+      document.getElementById('avgWin').textContent = d.avg_win != null ? '$' + d.avg_win.toFixed(2) : '–';
+      document.getElementById('avgLoss').textContent = d.avg_loss != null ? '$' + d.avg_loss.toFixed(2) : '–';
+    } catch (e) {
+      console.error('Stats fetch error', e);
+    }
+  }
+
+  async function fetchRuin() {
+    const capital = parseFloat(document.getElementById('capitalInput').value);
+    const unit = parseFloat(document.getElementById('unitInput').value);
+    if (!capital || !unit) return;
+    try {
+      const res = await fetch(`${BASE}/dashboard/ruin-probability?capital=${capital}&unit_size=${unit}`);
+      const d = await res.json();
+      const card = document.getElementById('ruin-card');
+      card.style.display = 'block';
+      const el = document.getElementById('ruinProb');
+      el.textContent = (d.ruin_probability * 100).toFixed(2) + '%';
+      el.className = 'value ' + (d.alert ? 'red' : 'green');
+
+      const alertBox = document.getElementById('alertBox');
+      if (d.alert) {
+        alertBox.textContent = '⚠️  ' + d.message;
+        alertBox.classList.add('visible');
+      } else {
+        alertBox.classList.remove('visible');
+      }
+    } catch (e) {
+      console.error('Ruin fetch error', e);
+    }
+  }
+
+  async function fetchTrades() {
+    try {
+      const res = await fetch(`${BASE}/dashboard/trades?limit=20`);
+      const trades = await res.json();
+      const tbody = document.getElementById('tradeBody');
+      if (!trades.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);text-align:center">No trades yet</td></tr>';
+        return;
+      }
+      tbody.innerHTML = trades.map(t => `
+        <tr>
+          <td>${t.id}</td>
+          <td>${t.symbol}</td>
+          <td><span class="badge ${t.action}">${t.action.toUpperCase()}</span></td>
+          <td>$${t.price.toLocaleString()}</td>
+          <td>${t.quantity}</td>
+          <td style="color:${t.pnl == null ? 'var(--muted)' : t.pnl >= 0 ? 'var(--green)' : 'var(--red)'}">
+            ${t.pnl != null ? (t.pnl >= 0 ? '+' : '') + '$' + t.pnl.toFixed(2) : '–'}
+          </td>
+          <td style="color:var(--muted)">${t.timestamp ? new Date(t.timestamp).toLocaleString() : '–'}</td>
+        </tr>
+      `).join('');
+    } catch (e) {
+      console.error('Trades fetch error', e);
+    }
+  }
+
+  // Initial load
+  fetchStats();
+  fetchTrades();
+
+  // Auto-refresh every 30 seconds
+  setInterval(() => { fetchStats(); fetchTrades(); }, 30000);
+</script>
+</body>
+</html>
