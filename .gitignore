@@ -12,6 +12,8 @@ build/
 # Environment
 .env
 *.env
+.venv/
+venv/
 
 # Database files
 *.db
