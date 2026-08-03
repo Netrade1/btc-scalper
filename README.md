@@ -11,7 +11,9 @@ Institutional research/paper-trading platform bootstrap for K2Think.ai.
 - Mock Level2 feed adapter and mock paper broker adapter
 - One real-venue Level2 adapter normalization layer (`BinanceDiffDepthAdapter`)
 - Sequence-aware market-by-price order book reconstruction
-- Shared contract tests for configuration, audit, adapters, and replay integrity
+- Official paper-broker client wrapper (`OfficialPaperBrokerAdapter`)
+- Execution reconciliation engine for order-vs-execution integrity checks
+- Shared contract tests for configuration, audit, adapters, replay integrity, and reconciliation
 
 ## Controls (defaulted safe)
 
