@@ -1,0 +1,12 @@
+# Perpetual-futures variant: lower taker fee, shorting allowed, funding charged.
+# Paper trading only (see btc_scalper/safety.py).
+[data]
+symbol = "BTC/USDT:USDT"
+market_type = "swap"
+
+[strategy]
+allow_short = true
+
+[execution]
+taker_fee = 0.0005
+funding_rate_8h = 0.0001

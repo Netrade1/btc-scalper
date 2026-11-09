@@ -1,0 +1,78 @@
+# btc_scalper configuration. Every key is optional; these are the defaults.
+# Unknown keys are rejected. Load with:  python -m btc_scalper --config config.example.toml ...
+
+[data]
+exchange = "binance"
+symbol = "BTC/USDT"
+timeframe = "5m"
+market_type = "spot"
+history_bars = 3600
+allow_flow_proxy = false
+max_staleness_bars = 2.0
+
+[features]
+atr_period = 14
+rsi_period = 14
+vwap_window = 48
+flow_window = 12
+vol_window = 48
+zscore_window = 96
+
+[strategy]
+stop_atr_mult = 1.5
+reward_risk = 2.0
+max_holding_bars = 24
+min_edge_r = 0.1
+min_probability = 0.4
+allow_short = false
+
+[model]
+train_window = 3000
+min_train_samples = 800
+retrain_every = 288
+embargo_bars = 12
+calibration_fraction = 0.25
+min_auc = 0.53
+calibration = "platt"
+min_oos_samples = 1500
+oos_window = 6000
+min_brier_skill = 0.0
+n_estimators = 200
+max_depth = 3
+learning_rate = 0.05
+subsample = 0.8
+colsample_bytree = 0.8
+min_child_weight = 20.0
+reg_lambda = 5.0
+seed = 42
+
+[risk]
+initial_capital = 100000.0
+risk_per_trade = 0.0075
+kelly_fraction = 0.25
+max_leverage = 3.0
+max_drawdown = 0.15
+drawdown_throttle = true
+daily_loss_limit = 0.03
+max_consecutive_losses = 5
+cooldown_bars = 36
+min_atr_pct = 0.0008
+max_atr_pct = 0.03
+max_bar_gap_multiple = 3.0
+
+[execution]
+taker_fee = 0.001
+slippage_bps = 1.0
+impact_coef = 0.1
+funding_rate_8h = 0.0
+
+[live]
+state_file = "state/live_state.json"
+audit_file = "logs/audit.jsonl"
+poll_buffer_seconds = 3.0
+warmup_bars = 8000
+max_consecutive_errors = 10
+api_key_env = "EXCHANGE_API_KEY"
+api_secret_env = "EXCHANGE_API_SECRET"
+api_password_env = "EXCHANGE_API_PASSWORD"
+sandbox = false
