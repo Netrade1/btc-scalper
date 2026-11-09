@@ -36,11 +36,13 @@ def default_store_path(directory: str, exchange: str, symbol: str, timeframe: st
 class TradeBarStore:
     def __init__(self, exchange: Any, symbol: str, bar_seconds: int, path: str,
                  side_is_maker: bool = False, page_limit: int = 1000,
-                 publish_delay_seconds: float = 3.0, now_ms: Callable[[], int] | None = None):
+                 publish_delay_seconds: float = 3.0, now_ms: Callable[[], int] | None = None,
+                 max_empty_retries: int = 5):
         self.ex, self.symbol, self.bar_ms = exchange, symbol, bar_seconds * 1000
         self.path, self.side_is_maker, self.page_limit = path, side_is_maker, page_limit
         self.publish_delay_ms = int(publish_delay_seconds * 1000)
         self.now_ms = now_ms or (lambda: int(exchange.milliseconds()))
+        self.max_empty_retries = max_empty_retries
 
     # ------------------------------------------------------------ store I/O
     def last_bar_end_ms(self) -> int | None:
@@ -123,7 +125,7 @@ class TradeBarStore:
         buf: list[dict] = []
         seen_at_cursor: set = set()
         prev_close = self._last_close()
-        written = pages = 0
+        written = pages = empty_streak = 0
         t_start = time.time()
         while True:
             from .exchange import _retry  # local import to avoid a cycle
@@ -141,7 +143,33 @@ class TradeBarStore:
                 ids = {t.get("id") for t in fresh if t["timestamp"] == new_cursor}
                 seen_at_cursor = ids if new_cursor != cursor else seen_at_cursor | ids
                 cursor = new_cursor
-            caught_up = len(fresh) == 0 or (end_ms is not None and cursor >= end_ms - 1)
+            near_edge = (end_ms is not None and cursor >= end_ms - 1) or \
+                cursor >= self.now_ms() - 2 * self.bar_ms
+            if not fresh and page and not near_edge:
+                # Page full of trades we already have (many share one timestamp): step past it.
+                cursor += 1
+                seen_at_cursor = set()
+                continue
+            if not fresh and not near_edge:
+                # An empty page mid-history is a feed hiccup, NOT the live edge. Writing
+                # flat bars here would invent days of fake data, so retry and then fail closed.
+                empty_streak += 1
+                if empty_streak > self.max_empty_retries:
+                    raise RuntimeError(
+                        f"Trade feed returned no data at {pd.Timestamp(cursor, unit='ms', tz='UTC')} "
+                        f"{empty_streak} times while far from the live edge; stopping (re-run to resume)")
+                logger.warning("Empty trade page at %s, retry %d", pd.Timestamp(cursor, unit="ms", tz="UTC"),
+                               empty_streak)
+                time.sleep(min(30.0, 2.0 ** empty_streak))
+                continue
+            if not fresh and empty_streak == 0 and not (end_ms is not None and cursor >= end_ms - 1):
+                # At the live edge, confirm with a second request before closing bars:
+                # a single empty page could still be a hiccup.
+                empty_streak = 1
+                time.sleep(1.0)
+                continue
+            empty_streak = 0
+            caught_up = (not fresh) or (end_ms is not None and cursor >= end_ms - 1)
             # Bars ending at or before the newest trade are complete; at the live edge,
             # bars that ended (plus a publish delay) before now are complete too.
             limit_ms = cursor

@@ -94,3 +94,52 @@ def test_client_uses_trade_store_for_non_binance(tmp_path):
     client.trade_store().update(start=pd.Timestamp(T0, unit="ms", tz="UTC"))
     df = client.fetch_closed_bars(10)
     assert len(df) == 10 and not df.attrs["issues"]
+
+
+class FlakyExchange(FakeExchange):
+    """Returns an empty page now and then, like a public API hiccup."""
+
+    def __init__(self, empty_every=5, always_empty_after=None):
+        super().__init__()
+        self.calls, self.empty_every, self.always_empty_after = 0, empty_every, always_empty_after
+
+    def fetch_trades(self, symbol, since=None, limit=1000):
+        self.calls += 1
+        if self.calls % self.empty_every == 0:
+            return []
+        if self.always_empty_after is not None and since is not None and since > self.always_empty_after:
+            return []
+        return super().fetch_trades(symbol, since, limit)
+
+
+def test_empty_page_mid_history_is_retried_not_treated_as_caught_up(tmp_path, monkeypatch):
+    monkeypatch.setattr("btc_scalper.trades.time.sleep", lambda s: None)
+    ex = FlakyExchange(empty_every=4)
+    ex.tape = tape(seed=5)
+    s = store_for(ex, tmp_path)
+    s.update(start=pd.Timestamp(T0, unit="ms", tz="UTC"))
+    got = s.load()
+    assert len(got) == 20 and got["trades"].sum() == len(ex.tape)
+    np.testing.assert_allclose(got["volume"].to_numpy(), reference_bars(ex.tape)["volume"].to_numpy())
+
+
+def test_persistent_empty_feed_fails_closed_without_fake_bars(tmp_path, monkeypatch):
+    monkeypatch.setattr("btc_scalper.trades.time.sleep", lambda s: None)
+    ex = FlakyExchange(empty_every=10**9, always_empty_after=T0 + 5 * BAR)
+    ex.tape = tape(seed=6)
+    s = store_for(ex, tmp_path)
+    with pytest.raises(RuntimeError, match="no data"):
+        s.update(start=pd.Timestamp(T0, unit="ms", tz="UTC"))
+    assert len(s.load()) <= 6          # only real bars were written; nothing invented to "now"
+
+
+def test_page_of_duplicate_timestamps_does_not_stall(tmp_path):
+    ex = FakeExchange()
+    tr = tape(seed=7)
+    for t in tr[200:600]:
+        t["timestamp"] = tr[200]["timestamp"]   # 400 trades in the same millisecond
+    tr.sort(key=lambda t: t["timestamp"])
+    ex.tape = tr
+    s = store_for(ex, tmp_path, page_limit=150)
+    s.update(start=pd.Timestamp(T0, unit="ms", tz="UTC"))
+    assert len(s.load()) == 20
