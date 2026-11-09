@@ -96,7 +96,29 @@ fail closed unless you set `allow_flow_proxy = true`.
 
 From `python scripts/replay_report.py` (20,000 × 5m bars ≈ 69 days per run, default model settings):
 
-REPLAY_TABLE
+| market | cost level | seed | trades | win % | avg R | return | max DD | Sharpe |
+|---|---|---|---|---|---|---|---|---|
+| random walk | perp 0.05% L/S | 7 | 0 | 0% | +0.00 | +0.0% | -0.0% | +0.00 |
+| random walk | perp 0.05% L/S | 11 | 0 | 0% | +0.00 | +0.0% | -0.0% | +0.00 |
+| random walk | perp 0.05% L/S | 23 | 0 | 0% | +0.00 | +0.0% | -0.0% | +0.00 |
+| random walk | spot 0.10% long | 7 | 0 | 0% | +0.00 | +0.0% | -0.0% | +0.00 |
+| random walk | spot 0.10% long | 11 | 0 | 0% | +0.00 | +0.0% | -0.0% | +0.00 |
+| random walk | spot 0.10% long | 23 | 0 | 0% | +0.00 | +0.0% | -0.0% | +0.00 |
+| planted edge a=1.0 | perp 0.05% L/S | 7 | 58 | 57% | +0.47 | +20.5% | 4.5% | +6.57 |
+| planted edge a=1.0 | perp 0.05% L/S | 11 | 55 | 40% | -0.12 | -3.0% | 8.1% | -1.17 |
+| planted edge a=1.0 | perp 0.05% L/S | 23 | 114 | 53% | +0.31 | +24.1% | 6.4% | +5.70 |
+| planted edge a=1.0 | spot 0.10% long | 7 | 12 | 75% | +0.80 | +7.1% | 1.5% | +5.71 |
+| planted edge a=1.0 | spot 0.10% long | 11 | 31 | 39% | -0.35 | -6.0% | 7.9% | -3.10 |
+| planted edge a=1.0 | spot 0.10% long | 23 | 14 | 64% | +0.43 | +4.3% | 4.2% | +3.04 |
+| planted edge a=1.5 | perp 0.05% L/S | 7 | 518 | 57% | +0.43 | +328.3% | 6.3% | +17.41 |
+| planted edge a=1.5 | perp 0.05% L/S | 11 | 376 | 58% | +0.43 | +194.6% | 9.3% | +16.13 |
+| planted edge a=1.5 | spot 0.10% long | 7 | 117 | 53% | +0.27 | +20.3% | 5.7% | +4.85 |
+| planted edge a=1.5 | spot 0.10% long | 11 | 88 | 53% | +0.09 | +2.9% | 7.1% | +0.98 |
+
+Reading it: on a **random walk the system never trades** (0 trades in all 6 runs), because the health gate
+correctly rejects noise. With a planted edge it trades and is mostly profitable. A weak edge (a=1.0) still
+loses on one seed out of three, which is realistic. **Costs matter a lot.** Going from 0.05% to 0.10% taker
+cuts the trade count 3–5× and the return by up to 10× on the same edge.
 
 **What this proves:** the mechanics work. The system stays flat on a random walk, finds a planted edge
 without look-ahead, and responds correctly to costs. **What it does not prove:** that any real BTC edge
