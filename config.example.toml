@@ -2,12 +2,15 @@
 # Unknown keys are rejected. Load with:  python -m btc_scalper --config config.example.toml ...
 
 [data]
-exchange = "binance"
-symbol = "BTC/USDT"
+exchange = "kraken"
+symbol = "BTC/USD"
 timeframe = "5m"
 market_type = "spot"
 history_bars = 3600
 allow_flow_proxy = false
+flow_source = "auto"
+trade_store_dir = "data"
+trade_side_is_maker = false
 max_staleness_bars = 2.0
 
 [features]
@@ -61,7 +64,7 @@ max_atr_pct = 0.03
 max_bar_gap_multiple = 3.0
 
 [execution]
-taker_fee = 0.001
+taker_fee = 0.004
 slippage_bps = 1.0
 impact_coef = 0.1
 funding_rate_8h = 0.0

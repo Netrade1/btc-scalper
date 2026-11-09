@@ -121,7 +121,7 @@ def load_csv(path: str, bar_seconds: int | None = None, allow_flow_proxy: bool =
     if ts_col is None:
         raise ValueError("CSV needs a timestamp column")
     ts = df[ts_col]
-    idx = pd.to_datetime(ts, unit="ms", utc=True) if np.issubdtype(ts.dtype, np.number) else pd.to_datetime(ts, utc=True)
+    idx = pd.to_datetime(ts, unit="ms", utc=True) if pd.api.types.is_numeric_dtype(ts) else pd.to_datetime(ts, utc=True)
     df = df.drop(columns=[ts_col]).set_index(pd.DatetimeIndex(idx, name="timestamp"))
     return validate_ohlcv(df, bar_seconds, allow_flow_proxy)
 

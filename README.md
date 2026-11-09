@@ -143,8 +143,31 @@ cuts the trade count 3–5× and the return by up to 10× on the same edge.
 without look-ahead, and responds correctly to costs. **What it does not prove:** that any real BTC edge
 exists. The synthetic edge was put there on purpose.
 
+## Real-data replay (Kraken BTC/USD, 5m, real taker volume)
+
+12,984 bars built from Kraken public trades, 2026-09-25 to 2026-11-09 (no gaps; 9 empty bars, one quiet
+45-minute stretch). BTC fell from 84,342 to 74,072. Run with
+`python scripts/real_replay.py data/kraken_BTCUSD_5m_trades.csv`.
+
+Base rate of target-before-stop (1.5 ATR stop, 2R target, 24 bars): long 27.3%, short 29.4%.
+Break-even before costs is 33.3%, so the bracket alone lost money in this window.
+
+| taker fee | cost (R) | trades | healthy share | fwd AUC |
+|---|---|---|---|---|
+| 0.40% | 5.4 | 0 | 0% | 0.496 |
+| 0.26% | 3.5 | 0 | 0% | 0.496 |
+| 0.10% | 1.4 | 0 | 0% | 0.496 |
+| 0.05% | 0.8 | 0 | 0% | 0.496 |
+
+The model's forward AUC is 0.496, a coin flip. Its health gate never opened, so it made no trades at
+any fee level. This is the fail-closed design working, not a bug. Two findings:
+
+1. **No predictive edge** from these 21 features on 5m Kraken BTC/USD in this window.
+2. **Costs are fatal at 5m on spot.** Median ATR is 0.10%, so the 1.5 ATR stop is about 0.15% wide. A
+   round trip at Kraken's 0.40% base fee costs 5.4R. Even a perfect predictor could not pay that.
+
 ## Next gates before any real money
-1. Replay on real exchange history (`fetch` + `backtest --csv`). Check that the health gate opens at all,
-   forward AUC/Brier skill, realized vs. predicted R, and the cost drag.
+1. Real-data replay: **failed** (see above). Before a paper run, find a setup where the cost is well
+   under 0.5R and the forward AUC lower bound is above 0.5 (longer bars such as 1h, lower fees, or new features).
 2. A forward paper run (`paper`) for several weeks; verify the ledger; compare paper fills with the backtest.
 3. Risk Chair review. Only then edit `safety.py`.
