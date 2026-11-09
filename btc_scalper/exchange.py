@@ -63,7 +63,9 @@ class CCXTClient:
         else:
             import ccxt
 
-            params: dict[str, Any] = {"enableRateLimit": True, "options": {"defaultType": data_cfg.market_type}}
+            # requests_trust_env: honour HTTPS_PROXY etc. (ccxt ignores them by default)
+            params: dict[str, Any] = {"enableRateLimit": True, "requests_trust_env": True,
+                                      "options": {"defaultType": data_cfg.market_type}}
             if authenticated:
                 assert live_cfg is not None
                 key, secret = os.environ.get(live_cfg.api_key_env), os.environ.get(live_cfg.api_secret_env)
@@ -103,8 +105,25 @@ class CCXTClient:
         rows = _retry(self.exchange.fetch_ohlcv, self.cfg.symbol, self.cfg.timeframe, since, limit)
         return [r + [float("nan")] for r in rows]
 
+    @property
+    def flow_from_trades(self) -> bool:
+        src = self.cfg.flow_source
+        return src == "trades" or (src == "auto" and self.cfg.exchange not in {"binance", "binanceusdm"})
+
+    def trade_store(self):
+        from .trades import TradeBarStore, default_store_path
+
+        path = default_store_path(self.cfg.trade_store_dir, self.cfg.exchange, self.cfg.symbol, self.cfg.timeframe)
+        return TradeBarStore(self.exchange, self.cfg.symbol, self.bar_seconds, path,
+                             side_is_maker=self.cfg.trade_side_is_maker)
+
     def fetch_closed_bars(self, n_bars: int, page_limit: int = 1000) -> pd.DataFrame:
         """The last ``n_bars`` fully closed bars, paginating as needed."""
+        if self.flow_from_trades:
+            store = self.trade_store()
+            store.update()
+            df = store.load().drop(columns=["trades"], errors="ignore")
+            return validate_ohlcv(df, self.bar_seconds, self.cfg.allow_flow_proxy).iloc[-n_bars:]
         now_ms = int(self.exchange.milliseconds())
         tf_ms = self.bar_seconds * 1000
         since = now_ms - (n_bars + 2) * tf_ms

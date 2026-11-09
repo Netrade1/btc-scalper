@@ -29,7 +29,7 @@ def _bars_and_exchange():
 
 def test_client_drops_forming_bar_and_uses_real_taker_volume():
     bars, ex = _bars_and_exchange()
-    df = CCXTClient(DataConfig(exchange="binance"), exchange=ex).fetch_closed_bars(100)
+    df = CCXTClient(DataConfig(exchange="binance", symbol="BTC/USDT"), exchange=ex).fetch_closed_bars(100)
     assert df.index[-1] == bars.index[-2]
     assert (df.index == bars.index[:-1]).all()
     assert df["buy_volume"].to_numpy() == pytest.approx(bars["buy_volume"].iloc[:-1].to_numpy())
@@ -38,8 +38,10 @@ def test_client_drops_forming_bar_and_uses_real_taker_volume():
 def test_missing_taker_volume_fails_closed_unless_opted_in():
     bars, ex = _bars_and_exchange()
     with pytest.raises(DataIntegrityError):
-        CCXTClient(DataConfig(exchange="kraken"), exchange=ex).fetch_closed_bars(100)
-    df = CCXTClient(DataConfig(exchange="kraken", allow_flow_proxy=True), exchange=ex).fetch_closed_bars(100)
+        CCXTClient(DataConfig(exchange="kraken", symbol="BTC/USDT", flow_source="klines"),
+                   exchange=ex).fetch_closed_bars(100)
+    df = CCXTClient(DataConfig(exchange="kraken", symbol="BTC/USDT", flow_source="klines", allow_flow_proxy=True),
+                    exchange=ex).fetch_closed_bars(100)
     assert df["buy_volume"].between(0, df["volume"]).all() and df["buy_volume_is_proxy"].all()
 
 

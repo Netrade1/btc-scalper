@@ -30,6 +30,10 @@ def main(argv: list[str] | None = None) -> int:
     fe.add_argument("--days", type=float, default=60)
     fe.add_argument("--out", required=True)
 
+    ft = sub.add_parser("fetch-trades", help="Backfill bars with real taker volume from public trades (resumable)")
+    ft.add_argument("--days", type=float, default=30)
+    ft.add_argument("--max-pages", type=int, default=None)
+
     vl = sub.add_parser("verify-ledger", help="Verify a hash-chained audit ledger")
     vl.add_argument("path")
 
@@ -69,6 +73,18 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if ok else 2
 
     from .exchange import CCXTClient
+
+    if args.cmd == "fetch-trades":
+        import pandas as pd
+
+        client = CCXTClient(cfg.data)
+        store = client.trade_store()
+        start = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=args.days)
+        log.info("Backfilling %s %s from public trades into %s (resumable: re-run to continue)",
+                 cfg.data.exchange, cfg.data.symbol, store.path)
+        n = store.update(start=start, max_pages=args.max_pages)
+        log.info("Wrote %d bars. Backtest with: python -m btc_scalper backtest --csv %s", n, store.path)
+        return 0
 
     if args.cmd == "fetch":
         import pandas as pd

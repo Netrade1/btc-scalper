@@ -17,6 +17,7 @@ class FakeExchange:
         self.fail_on_stop_order = fail_on_stop_order
         self.last_price = 65_000.0
         self.created: list[dict] = []
+        self.tape: list[dict] = []
         self.markets = {"BTC/USDT": {
             "id": "BTCUSDT", "symbol": "BTC/USDT", "contract": False, "linear": None,
             "quote": "USDT", "limits": {"amount": {"min": 0.0001}, "cost": {"min": 5.0}},
@@ -59,6 +60,11 @@ class FakeExchange:
         return out
 
     fapiPublicGetKlines = publicGetKlines
+
+    def fetch_trades(self, symbol, since=None, limit=1000):
+        """Inclusive ``since`` like Kraken via ccxt; served from ``self.tape`` (sorted trade dicts)."""
+        out = [t for t in self.tape if since is None or t["timestamp"] >= since]
+        return [dict(t) for t in out[:limit]]
 
     # trading
     def amount_to_precision(self, symbol, amount):

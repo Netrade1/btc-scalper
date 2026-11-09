@@ -79,10 +79,11 @@ def test_config_validation():
         SystemConfig.from_dict({"strategy": {"allow_short": True}})   # spot default cannot short
     cfg = SystemConfig.load(None)
     assert cfg.data.market_type == "spot" and not cfg.strategy.allow_short
-    assert cfg.execution.taker_fee == 0.0010
+    assert cfg.data.exchange == "kraken" and cfg.execution.taker_fee == 0.0040
 
 
-def test_default_spot_costs_are_about_one_r_on_5m():
-    """Shipped spot costs: 2 x (0.10% + 1bp) on a 1.5 x ATR stop with ATR ~0.15% of price."""
-    cost = round_trip_cost_r(60_000, 1.5 * 0.0015 * 60_000, ExecutionConfig())
-    assert 0.9 < cost < 1.1
+def test_cost_in_r_on_5m_bars():
+    """Round trip on a 1.5 x ATR stop with ATR ~0.15% of price: 0.10% taker ~1R, Kraken 0.40% ~3.6R."""
+    stop = 1.5 * 0.0015 * 60_000
+    assert 0.9 < round_trip_cost_r(60_000, stop, ExecutionConfig(taker_fee=0.0010)) < 1.1
+    assert 3.4 < round_trip_cost_r(60_000, stop, ExecutionConfig()) < 3.8

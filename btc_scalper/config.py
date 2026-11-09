@@ -23,12 +23,15 @@ def timeframe_seconds(timeframe: str) -> int:
 
 @dataclass
 class DataConfig:
-    exchange: str = "binance"
-    symbol: str = "BTC/USDT"          # ccxt unified symbol ("BTC/USDT:USDT" = linear perpetual)
+    exchange: str = "kraken"          # Canadian-accessible; flow is built from public trades
+    symbol: str = "BTC/USD"           # ccxt unified symbol (BTC/CAD also listed on Kraken)
     timeframe: str = "5m"
     market_type: str = "spot"         # "spot", "swap" or "future" (ccxt defaultType)
     history_bars: int = 3600          # bars pulled each live cycle (must cover model training window)
     allow_flow_proxy: bool = False    # FAIL_CLOSED: refuse data without real taker-buy volume
+    flow_source: str = "auto"         # "klines" (Binance raw klines), "trades" (aggregate public trades), "auto"
+    trade_store_dir: str = "data"     # where trade-built bars are stored
+    trade_side_is_maker: bool = False # True for venues whose public trade side is the maker side
     max_staleness_bars: float = 2.0   # integrity gate: newest closed bar must be this fresh
 
 
@@ -92,7 +95,7 @@ class RiskConfig:
 
 @dataclass
 class ExecutionConfig:
-    taker_fee: float = 0.0010         # Binance spot taker, per side
+    taker_fee: float = 0.0040         # Kraken Pro base-tier taker, per side (set your real tier)
     slippage_bps: float = 1.0         # fixed half-spread + latency cost
     impact_coef: float = 0.1          # square-root market impact coefficient
     funding_rate_8h: float = 0.0      # perpetual funding paid while holding (0 for spot)
@@ -165,6 +168,7 @@ class SystemConfig:
             (s.max_holding_bars >= 1, "strategy.max_holding_bars must be >= 1"),
             (0 < m.calibration_fraction < 0.5, "model.calibration_fraction must be in (0, 0.5)"),
             (m.train_window >= m.min_train_samples, "model.train_window must be >= min_train_samples"),
+            (self.data.flow_source in {"auto", "klines", "trades"}, "data.flow_source invalid"),
             (m.calibration in {"platt", "isotonic"}, "model.calibration must be platt or isotonic"),
             (self.data.market_type in {"spot", "swap", "future"}, "data.market_type invalid"),
         ]

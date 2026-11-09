@@ -76,9 +76,14 @@ python -m pytest -q                    # 38 tests
 # Backtest on synthetic data (alpha=0 is a pure random walk; alpha>0 plants an order-flow edge)
 python -m btc_scalper backtest --synthetic-bars 20000 --alpha 1.0 --config config.perp.example.toml
 
-# Real data: download, then walk-forward backtest (writes reports/latest/*.csv|json + audit.jsonl)
+# Real data (Kraken, default): build 5m bars with real taker volume from public trades.
+# About 1 minute per day of history; resumable (re-run the same command to continue).
+python -m btc_scalper fetch-trades --days 45
+python -m btc_scalper backtest --csv data/kraken_BTCUSD_5m_trades.csv
+
+# Binance (where available) has taker volume in its candles directly:
+#   [data] exchange = "binance", symbol = "BTC/USDT"   then:
 python -m btc_scalper fetch --days 90 --out data/btc_5m.csv
-python -m btc_scalper backtest --csv data/btc_5m.csv
 
 # Paper trading against live closed bars (state in state/, ledger in logs/)
 python -m btc_scalper paper
@@ -87,10 +92,24 @@ python -m btc_scalper verify-ledger logs/audit.jsonl
 python -m btc_scalper live --i-accept-the-risk   # → PermissionError (PAPER_TRADING_ONLY)
 ```
 
-Defaults are **Binance spot, long-only, 0.10% taker**. `config.perp.example.toml` switches to a perpetual
-(0.05% taker, long/short, funding). Note: Binance does not serve some jurisdictions (including Canada).
-Set `[data] exchange` to a venue you can use. Order-flow features need taker-buy volume; venues without it
-fail closed unless you set `allow_flow_proxy = true`.
+Defaults are **Kraken BTC/USD spot, long-only, 0.40% taker** (Kraken Pro base tier; set `[execution]
+taker_fee` to your real tier). Kraken candles don't include taker volume, so bars are built from the public
+trade feed, where each trade carries the taker's side (`btc_scalper/trades.py`). The paper loop keeps that
+store up to date incrementally. `config.perp.example.toml` switches to a Binance perpetual (0.05% taker,
+long/short, funding). Venues with no taker data fail closed unless you set `allow_flow_proxy = true`.
+
+**Fees vs. timeframe, the main constraint.** Round-trip cost in R with a 1.5×ATR stop on 5m BTC (ATR ≈ 0.15%):
+
+| Taker fee per side | Round-trip cost |
+|---|---|
+| 0.05% (perp / VIP) | ≈ 0.5R |
+| 0.10% | ≈ 1R |
+| 0.26% | ≈ 2.4R |
+| 0.40% (Kraken base) | ≈ 3.6R |
+
+At 0.40%, a 5m bracket would need a win rate above ~90% just to break even, so expect the system to make
+**no trades**. That's the correct answer at those fees. Options are a higher fee tier, maker (limit) entries,
+or longer bars (a wider ATR shrinks the cost in R).
 
 ## Synthetic replay results
 
