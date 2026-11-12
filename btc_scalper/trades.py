@@ -44,6 +44,28 @@ class TradeBarStore:
         self.now_ms = now_ms or (lambda: int(exchange.milliseconds()))
         self.max_empty_retries = max_empty_retries
 
+    @property
+    def _kraken_native(self) -> bool:
+        return getattr(self.ex, "id", "") == "kraken" and hasattr(self.ex, "publicGetTrades")
+
+    def _kraken_page(self, since_ns: int) -> tuple[list[dict], int]:
+        """One page of Kraken trades, paged by Kraken's nanosecond ``last`` cursor.
+
+        ccxt pages Kraken by millisecond, and Kraken can print more than 1000 trades in
+        one millisecond (one order sweeping many small ones). Paging by millisecond then
+        stalls or drops trades, so page natively instead.
+        """
+        if not getattr(self.ex, "markets", None):
+            self.ex.load_markets()
+        res = self.ex.publicGetTrades({"pair": self.ex.market(self.symbol)["id"], "since": str(since_ns),
+                                       "count": self.page_limit})["result"]
+        rows = next(v for k, v in res.items() if k != "last")
+        last = int(res["last"])
+        trades = [{"id": str(r[6]) if len(r) > 6 else f"{r[2]}-{i}", "timestamp": int(round(float(r[2]) * 1000)),
+                   "price": float(r[0]), "amount": float(r[1]), "side": "buy" if r[3] == "b" else "sell"}
+                  for i, r in enumerate(rows)]
+        return trades, max(last, since_ns)
+
     # ------------------------------------------------------------ store I/O
     def last_bar_end_ms(self) -> int | None:
         if not os.path.exists(self.path):
@@ -124,17 +146,22 @@ class TradeBarStore:
         bar_start, cursor = resume, resume
         buf: list[dict] = []
         seen_at_cursor: set = set()
+        native: int | None = None  # Kraken's own nanosecond paging cursor
         prev_close = self._last_close()
         written = pages = empty_streak = 0
         t_start = time.time()
         while True:
             from .exchange import _retry  # local import to avoid a cycle
 
-            page = _retry(self.ex.fetch_trades, self.symbol, cursor, self.page_limit)
+            if self._kraken_native:
+                page, native = _retry(self._kraken_page, native if native is not None else cursor * 1_000_000)
+            else:
+                page = _retry(self.ex.fetch_trades, self.symbol, cursor, self.page_limit)
             pages += 1
             fresh = [t for t in page if t["timestamp"] >= cursor
                      and not (t["timestamp"] == cursor and t.get("id") in seen_at_cursor)]
             fresh.sort(key=lambda t: t["timestamp"])
+            reached_end = end_ms is not None and any(t["timestamp"] >= end_ms for t in fresh)
             if end_ms is not None:
                 fresh = [t for t in fresh if t["timestamp"] < end_ms]
             buf.extend(fresh)
@@ -143,6 +170,8 @@ class TradeBarStore:
                 ids = {t.get("id") for t in fresh if t["timestamp"] == new_cursor}
                 seen_at_cursor = ids if new_cursor != cursor else seen_at_cursor | ids
                 cursor = new_cursor
+            if reached_end:
+                cursor = max(cursor, end_ms - 1)  # the feed has passed the end: this range is complete
             near_edge = (end_ms is not None and cursor >= end_ms - 1) or \
                 cursor >= self.now_ms() - 2 * self.bar_ms
             if not fresh and page and not near_edge:

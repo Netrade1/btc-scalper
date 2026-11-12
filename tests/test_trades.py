@@ -143,3 +143,62 @@ def test_page_of_duplicate_timestamps_does_not_stall(tmp_path):
     s = store_for(ex, tmp_path, page_limit=150)
     s.update(start=pd.Timestamp(T0, unit="ms", tz="UTC"))
     assert len(s.load()) == 20
+
+
+class FakeKrakenNative(FakeExchange):
+    """Kraken's raw Trades endpoint: nanosecond ``since``/``last`` cursor, float-second times."""
+
+    id = "kraken"
+
+    def __init__(self, tape_):
+        super().__init__()
+        # nanosecond stamps: trades sharing a millisecond get distinct sub-ms offsets
+        self.ns = [t["timestamp"] * 1_000_000 + k for k, t in enumerate(tape_)]
+        self.rows = [[str(t["price"]), str(t["amount"]), ns / 1e9, "b" if t["side"] == "buy" else "s", "m", "",
+                      int(t["id"])] for t, ns in zip(tape_, self.ns)]
+
+    def market(self, symbol):
+        return {"id": "XXBTZUSD"}
+
+    def fetch_trades(self, *a, **k):
+        raise AssertionError("Kraken store must page natively, not via ccxt")
+
+    def publicGetTrades(self, params):
+        since, count = int(params["since"]), int(params["count"])
+        idx = [i for i, ns in enumerate(self.ns) if ns > since][:count]
+        rows = [self.rows[i] for i in idx]
+        return {"result": {"XXBTZUSD": rows, "last": str(self.ns[idx[-1]] if idx else since)}}
+
+
+def test_kraken_burst_of_trades_in_one_millisecond(tmp_path):
+    base = tape(n=3000, seed=5)
+    burst_ms = T0 + 7 * BAR + 1234
+    burst = [{"id": str(10_000 + i), "timestamp": burst_ms, "price": 65_000.0, "amount": 0.0001,
+              "side": "buy"} for i in range(2500)]
+    trades = sorted(base + burst, key=lambda t: t["timestamp"])
+    for i, t in enumerate(trades):
+        t["id"] = str(i)
+    ex = FakeKrakenNative(trades)
+    n = store_for(ex, tmp_path, page_limit=1000).update(start=pd.Timestamp(T0, unit="ms", tz="UTC"))
+    got = store_for(ex, tmp_path).load()
+    assert n == 20
+    assert got["trades"].sum() == len(trades)           # all 2500 burst trades counted, none stalled
+    np.testing.assert_allclose(got["volume"].to_numpy(), reference_bars(trades)["volume"].to_numpy())
+
+
+def test_range_with_end_stops_at_end(tmp_path):
+    ex = FakeExchange()
+    end_ms = T0 + 9 * BAR
+    # a quiet minute before the end: the old loop crept through it 1 ms per request
+    ex.tape = [t for t in tape(seed=6) if not end_ms - 60_000 <= t["timestamp"] < end_ms]
+    calls = []
+    real = ex.fetch_trades
+    ex.fetch_trades = lambda *a, **k: calls.append(1) or real(*a, **k)
+    s = store_for(ex, tmp_path)
+    end = pd.Timestamp(end_ms, unit="ms", tz="UTC")
+    n = s.update(start=pd.Timestamp(T0, unit="ms", tz="UTC"), end=end)
+    got = s.load()
+    assert len(calls) < 50
+    assert n == 9 and got.index[-1] == pd.Timestamp(T0 + 8 * BAR, unit="ms", tz="UTC")
+    ref = reference_bars([t for t in ex.tape if t["timestamp"] < end.timestamp() * 1000])
+    np.testing.assert_allclose(got["close"].to_numpy(), ref["close"].to_numpy())
