@@ -126,6 +126,26 @@ def load_csv(path: str, bar_seconds: int | None = None, allow_flow_proxy: bool =
     return validate_ohlcv(df, bar_seconds, allow_flow_proxy)
 
 
+def resample_bars(df: pd.DataFrame, bar_seconds: int) -> pd.DataFrame:
+    """Combine bars into longer ones (e.g. 5m -> 1h). Volumes and trade counts are summed.
+
+    Only complete buckets are kept: a bucket missing any source bar is dropped, so a
+    partial first or last hour cannot pass as a full one.
+    """
+    if len(df) < 2:
+        raise ValueError("Need at least two bars to resample")
+    src = int((df.index[1] - df.index[0]).total_seconds())
+    if bar_seconds % src:
+        raise ValueError(f"Target {bar_seconds}s is not a multiple of the source {src}s bars")
+    rule = f"{bar_seconds}s"
+    agg = {"open": "first", "high": "max", "low": "min", "close": "last"}
+    agg.update({c: "sum" for c in ("volume", "buy_volume", "trades") if c in df.columns})
+    grouped = df.resample(rule, label="left", closed="left")
+    out = grouped.agg(agg)
+    counts = grouped["close"].count()
+    return out[counts == bar_seconds // src]
+
+
 def save_csv(df: pd.DataFrame, path: str) -> None:
     df.to_csv(path, index_label="timestamp")
 
