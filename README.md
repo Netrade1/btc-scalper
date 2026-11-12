@@ -149,8 +149,9 @@ exists. The synthetic edge was put there on purpose.
 45-minute stretch). BTC fell from 84,342 to 74,072. Run with
 `python scripts/real_replay.py data/kraken_BTCUSD_5m_trades.csv`.
 
-Base rate of target-before-stop (1.5 ATR stop, 2R target, 24 bars): long 27.3%, short 29.4%.
-Break-even before costs is 33.3%, so the bracket alone lost money in this window.
+Base rate of target-before-stop (1.5 ATR stop, 2R target, 24 bars): long 27.3%, short 29.4%. This is
+below 33.3% partly because about 13% of brackets time out at a small gain or loss rather than losing
+1R; on the 2-year data the average bracket is about 0R before costs, as on a random walk.
 
 | taker fee | cost (R) | trades | healthy share | fwd AUC |
 |---|---|---|---|---|
@@ -166,8 +167,30 @@ any fee level. This is the fail-closed design working, not a bug. Two findings:
 2. **Costs are fatal at 5m on spot.** Median ATR is 0.10%, so the 1.5 ATR stop is about 0.15% wide. A
    round trip at Kraken's 0.40% base fee costs 5.4R. Even a perfect predictor could not pay that.
 
+## Real-data replay, 2 years at 1h and 4h
+
+209,506 five-minute bars from Kraken trades, 2024-11-12 to 2026-11-09, combined into 1h (17,458 bars)
+and 4h (4,364 bars). No gaps; the only long empty stretches are two Kraken trading halts (2025-01-25,
+3.5h; 2025-11-01, 7h), confirmed against Kraken's API. Download with
+`python scripts/backfill_history.py --start 2024-11-12`, then
+`python scripts/real_replay.py data/kraken_BTCUSD_5m_trades.csv --timeframe 1h` (or `4h`).
+4h uses shorter model windows (train 1500, forward record 600) because there are fewer bars.
+
+| bars | fee | cost (R) | trades | healthy share | fwd AUC |
+|---|---|---|---|---|---|
+| 1h | 0.40% / 0.26% / 0.16% / 0.10% | 1.0 / 0.7 / 0.4 / 0.3 | 0 | 1% | 0.497 |
+| 4h | 0.40% / 0.26% / 0.16% / 0.10% | 0.5 / 0.3 / 0.2 / 0.1 | 0 | 0% | 0.475 |
+
+Average bracket result before costs: 1h long +0.01R, short +0.02R; 4h long −0.01R, short +0.05R.
+
+Longer bars fixed the cost problem (0.1–0.5R at 4h) but not the forecasting one: the forward AUC
+is a coin flip at every bar length, and the model never earned a trade. These 21 price, volatility
+and order-flow features carry no usable signal for this 2R bracket on Kraken BTC/USD.
+
 ## Next gates before any real money
-1. Real-data replay: **failed** (see above). Before a paper run, find a setup where the cost is well
-   under 0.5R and the forward AUC lower bound is above 0.5 (longer bars such as 1h, lower fees, or new features).
+1. Real-data replay: **failed** at 5m, 1h and 4h (see above). Costs are solvable with longer bars;
+   the missing piece is signal. Do not paper trade this model. Next: new information sources (e.g.
+   funding, basis and open interest from a derivatives venue, cross-exchange flow), tested with
+   the same walk-forward gate, with one pre-registered hypothesis at a time to avoid overfitting.
 2. A forward paper run (`paper`) for several weeks; verify the ledger; compare paper fills with the backtest.
 3. Risk Chair review. Only then edit `safety.py`.
