@@ -187,6 +187,20 @@ Longer bars fixed the cost problem (0.1–0.5R at 4h) but not the forecasting on
 is a coin flip at every bar length, and the model never earned a trade. These 21 price, volatility
 and order-flow features carry no usable signal for this 2R bracket on Kraken BTC/USD.
 
+## H2: daily trend rule (pre-registered), FAIL
+
+Hold BTC when its price is above its level 28 days earlier, else cash, at 0.40% fees. Design and pass
+rule were committed before the run: `docs/hypotheses/H2_trend.md`. Run with
+`python scripts/trend_test.py data/kraken_BTCUSD_5m_trades.csv`.
+
+| | Sharpe | total return | max drawdown |
+|---|---|---|---|
+| trend 28d, 0.40% | −0.54 | −28.4% | −44.9% |
+| buy and hold | −0.08 | −21.9% | −53.1% |
+
+Bootstrap P(strategy Sharpe ≤ buy-and-hold) = 0.78. Fees did most of the damage: 72 switches cost about
+30%, and before costs the rule made −3.7%.
+
 ## Next gates before any real money
 1. Real-data replay: **failed** at 5m, 1h and 4h (see above). Costs are solvable with longer bars;
    the missing piece is signal. Do not paper trade this model. Next: new information sources (e.g.
