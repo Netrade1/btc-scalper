@@ -201,6 +201,20 @@ rule were committed before the run: `docs/hypotheses/H2_trend.md`. Run with
 Bootstrap P(strategy Sharpe ≤ buy-and-hold) = 0.78. Fees did most of the damage: 72 switches cost about
 30%, and before costs the rule made −3.7%.
 
+## H3: 14-day trend rule on unseen 2018–2024 data (pre-registered), FAIL
+
+`docs/hypotheses/H3_trend14_holdout.md` was committed before the data was downloaded. 722,016 five-minute
+Kraken bars (2018-01-01 to 2024-11-11), stored apart in `data/holdout/`.
+
+| | Sharpe | total return | max drawdown |
+|---|---|---|---|
+| trend 14d, 0.40% | +0.76 | +440% | −61% |
+| buy and hold | +0.73 | +488% | −77% |
+
+The rule roughly matched buy-and-hold's risk-adjusted return with a smaller worst drawdown, but the
+difference is not distinguishable from luck (bootstrap P = 0.47, needed < 0.05). It lagged buy-and-hold
+in every rising year and helped only in 2018 and 2022. It is a risk-reduction overlay, not an edge.
+
 ## Next gates before any real money
 1. Real-data replay: **failed** at 5m, 1h and 4h (see above). Costs are solvable with longer bars;
    the missing piece is signal. Do not paper trade this model. Next: new information sources (e.g.
