@@ -8,3 +8,4 @@ data/*.csv
 *.egg-info/
 .env
 data/chunks/
+data/holdout/

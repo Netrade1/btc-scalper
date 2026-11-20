@@ -22,8 +22,8 @@ from btc_scalper.exchange import CCXTClient
 from btc_scalper.trades import TradeBarStore, default_store_path
 
 
-def chunk_paths(cfg, n):
-    base = os.path.join(cfg.data.trade_store_dir, "chunks")
+def chunk_paths(cfg, n, root=None):
+    base = os.path.join(root or cfg.data.trade_store_dir, "chunks")
     os.makedirs(base, exist_ok=True)
     name = os.path.basename(default_store_path(cfg.data.trade_store_dir, cfg.data.exchange,
                                                cfg.data.symbol, cfg.data.timeframe))
@@ -77,15 +77,23 @@ def main():
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--config", default=None)
     ap.add_argument("--merge-only", action="store_true")
+    ap.add_argument("--end", default=None, help="exclusive end (default: first bar of the main store)")
+    ap.add_argument("--out-dir", default=None,
+                    help="write a separate store here (e.g. a hold-out set) instead of the main one")
     a = ap.parse_args()
     cfg = SystemConfig.load(a.config) if a.config else SystemConfig()
-    main_path = default_store_path(cfg.data.trade_store_dir, cfg.data.exchange, cfg.data.symbol,
-                                   cfg.data.timeframe)
-    first = pd.read_csv(main_path, nrows=1)["timestamp"].iloc[0] if os.path.exists(main_path) else None
-    if first is None:
-        raise SystemExit(f"{main_path} missing: run `fetch-trades` first so the chunks have an end point")
-    start, end = pd.Timestamp(a.start, tz="UTC"), pd.Timestamp(first)
-    paths = chunk_paths(cfg, a.workers)
+    root = a.out_dir or cfg.data.trade_store_dir
+    main_path = default_store_path(root, cfg.data.exchange, cfg.data.symbol, cfg.data.timeframe)
+    if a.end:
+        end = pd.Timestamp(a.end, tz="UTC")
+    else:
+        if not os.path.exists(main_path):
+            raise SystemExit(f"{main_path} missing: pass --end or run `fetch-trades` first")
+        end = pd.Timestamp(pd.read_csv(main_path, nrows=1)["timestamp"].iloc[0])
+    start = pd.Timestamp(a.start, tz="UTC")
+    if os.path.exists(main_path) and a.out_dir and not a.merge_only:
+        raise SystemExit(f"{main_path} already exists; delete it or use --merge-only")
+    paths = chunk_paths(cfg, a.workers, root)
     if not a.merge_only:
         edges = pd.date_range(start, end, periods=a.workers + 1)
         edges = [e.floor(f"{cfg.bar_seconds}s") for e in edges[:-1]] + [end]
